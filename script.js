@@ -1,541 +1,473 @@
-/* ==========================================================================
-   Meridian Capital — Lógica de frontend
-   Persistencia basada en localStorage/sessionStorage.
-   NOTA: este almacenamiento es solo para fines de demostración de frontend.
-   En un entorno de producción, la autenticación y las contraseñas SIEMPRE
-   deben manejarse en un backend seguro, nunca en el navegador.
-   ========================================================================== */
+/* =============================================================
+   MERIDIAN — Gestión de Prospectos
+   script.js — Firebase (Firestore) + lógica de interfaz
+   ============================================================= */
 
-(function () {
-  'use strict';
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  getDocs,
+  updateDoc,
+  doc,
+  onSnapshot,
+  query,
+  orderBy,
+  serverTimestamp,
+} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-  /* ------------------------------------------------------------------ */
-  /* Claves de almacenamiento                                            */
-  /* ------------------------------------------------------------------ */
-  const STORAGE_KEYS = {
-    USERS: 'mc_users',
-    LEADS: 'mc_leads',
-    SESSION: 'mc_session',
-    ZOHO_LINK: 'mc_zoho_link',
-  };
+/* ---------------------------------------------------------------
+   1. INICIALIZACIÓN DE FIREBASE
+--------------------------------------------------------------- */
+const firebaseConfig = {
+  apiKey: "AIzaSyB4YT9e1jg3nm7Fr8P8VHooffp3nQmIwMM",
+  authDomain: "funnel-77b45.firebaseapp.com",
+  projectId: "funnel-77b45",
+  storageBucket: "funnel-77b45.firebasestorage.app",
+  messagingSenderId: "346894896581",
+  appId: "1:346894896581:web:0f603a594e5894e5b04fac",
+  measurementId: "G-C6CM9433H3",
+};
 
-  const STAGE_LABELS = {
-    'lead': 'LEAD',
-    'contactados': 'Contactados',
-    'no-contactados': 'No contactados',
-    'reunion': 'Reunión (agendada / realizada)',
-    'prospecto': 'Prospecto (calificado)',
-    'inscripcion': 'Proceso de inscripción',
-  };
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const leadsCollectionRef = collection(db, "leads");
 
-  const ZOHO_REQUIRED_STAGES = ['reunion', 'inscripcion'];
+/* ---------------------------------------------------------------
+   2. ESTADO LOCAL DE LA APLICACIÓN
+   (Se mantiene sincronizado en tiempo real con Firestore
+   mediante onSnapshot; es la única fuente de verdad en memoria)
+--------------------------------------------------------------- */
+let allLeads = []; // [{ id, nombre, email, telefono, estado, enlaceZoho, responsable, fechaCreacion }]
 
-  /* ------------------------------------------------------------------ */
-  /* Utilidades generales                                                 */
-  /* ------------------------------------------------------------------ */
-  const $ = (selector, scope) => (scope || document).querySelector(selector);
-  const $all = (selector, scope) => Array.from((scope || document).querySelectorAll(selector));
+const ESTADOS = [
+  "LEAD",
+  "Contactados",
+  "No contactados",
+  "Reunión",
+  "Prospecto",
+  "Proceso de Inscripción",
+];
 
-  const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/* ---------------------------------------------------------------
+   3. UTILIDADES
+--------------------------------------------------------------- */
 
-  function isValidEmail(value) {
-    return EMAIL_REGEX.test(String(value).trim());
-  }
+// Convierte un estado en un slug válido para usarlo como clase CSS / data-attribute
+function slugify(text) {
+  return text
+    .toString()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // quita acentos
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "-");
+}
 
-  function isValidUrl(value) {
-    try {
-      const url = new URL(value);
-      return url.protocol === 'http:' || url.protocol === 'https:';
-    } catch (err) {
-      return false;
+// Formatea una fecha (Timestamp de Firestore, string ISO o Date) a formato legible
+function formatFecha(fecha) {
+  try {
+    let dateObj;
+    if (!fecha) return "—";
+    if (typeof fecha.toDate === "function") {
+      dateObj = fecha.toDate(); // Firestore Timestamp
+    } else {
+      dateObj = new Date(fecha);
     }
-  }
-
-  function readJSON(key, fallback) {
-    try {
-      const raw = localStorage.getItem(key);
-      return raw ? JSON.parse(raw) : fallback;
-    } catch (err) {
-      console.error('Error leyendo localStorage:', err);
-      return fallback;
-    }
-  }
-
-  function writeJSON(key, value) {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch (err) {
-      console.error('Error escribiendo en localStorage:', err);
-    }
-  }
-
-  function setFieldError(fieldId, message) {
-    const errorEl = document.querySelector(`[data-error-for="${fieldId}"]`);
-    const inputEl = document.getElementById(fieldId);
-    if (errorEl) errorEl.textContent = message || '';
-    if (inputEl) inputEl.classList.toggle('invalid', Boolean(message));
-  }
-
-  function clearErrors(form) {
-    $all('.field-error', form).forEach((el) => (el.textContent = ''));
-    $all('input', form).forEach((el) => el.classList.remove('invalid'));
-  }
-
-  /* ==================================================================== */
-  /* 1. PESTAÑAS DE AUTENTICACIÓN (LOGIN / REGISTRO)                       */
-  /* ==================================================================== */
-  function initAuthTabs() {
-    const tabs = $all('.auth-tab');
-    const forms = {
-      login: $('#loginForm'),
-      register: $('#registerForm'),
-    };
-
-    tabs.forEach((tab) => {
-      tab.addEventListener('click', () => {
-        tabs.forEach((t) => {
-          t.classList.remove('active');
-          t.setAttribute('aria-selected', 'false');
-        });
-        tab.classList.add('active');
-        tab.setAttribute('aria-selected', 'true');
-
-        Object.values(forms).forEach((f) => f.classList.remove('active'));
-        forms[tab.dataset.tab].classList.add('active');
-      });
+    if (isNaN(dateObj.getTime())) return "—";
+    return dateObj.toLocaleDateString("es-GT", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
     });
+  } catch (e) {
+    return "—";
   }
+}
 
-  /* ==================================================================== */
-  /* 2. FORMULARIO DE CAPTURA DE LEAD (HERO)                               */
-  /* ==================================================================== */
-  function initLeadForm() {
-    const form = $('#leadForm');
-    const confirmation = $('#leadConfirmation');
+// Muestra una notificación tipo "toast"
+function showToast(message, type = "success") {
+  const container = document.getElementById("toast-container");
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 4200);
+}
 
-    form.addEventListener('submit', (event) => {
+function setConnectionStatus(state) {
+  const indicator = document.getElementById("connection-indicator");
+  const label = document.getElementById("connection-label");
+  indicator.classList.remove("online", "offline");
+  if (state === "online") {
+    indicator.classList.add("online");
+    label.textContent = "Sincronizado en tiempo real";
+  } else if (state === "offline") {
+    indicator.classList.add("offline");
+    label.textContent = "Sin conexión a la base de datos";
+  } else {
+    label.textContent = "Sincronizando…";
+  }
+}
+
+/* ---------------------------------------------------------------
+   4. NAVEGACIÓN ENTRE PESTAÑAS
+--------------------------------------------------------------- */
+function initNavigation() {
+  const tabs = document.querySelectorAll(".nav-tab");
+  const panels = document.querySelectorAll(".panel");
+
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      tabs.forEach((t) => {
+        t.classList.remove("active");
+        t.setAttribute("aria-selected", "false");
+      });
+      panels.forEach((p) => p.classList.remove("active"));
+
+      tab.classList.add("active");
+      tab.setAttribute("aria-selected", "true");
+      document.getElementById(tab.dataset.target).classList.add("active");
+    });
+  });
+}
+
+/* ---------------------------------------------------------------
+   5. GUARDADO DE UN NUEVO LEAD EN FIRESTORE
+--------------------------------------------------------------- */
+function initForms() {
+  const forms = document.querySelectorAll(".lead-form");
+
+  forms.forEach((form) => {
+    form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      clearErrors(form);
 
-      const name = $('#leadName').value.trim();
-      const email = $('#leadEmail').value.trim();
-      const phone = $('#leadPhone').value.trim();
+      const responsable = form.dataset.formOwner; // "María José" o "José Pablo"
+      const submitBtn = form.querySelector('button[type="submit"]');
+      const feedback = form.querySelector("[data-feedback]");
 
-      let valid = true;
-
-      if (!name) {
-        setFieldError('leadName', 'Por favor, ingrese su nombre completo.');
-        valid = false;
-      }
-
-      if (!email) {
-        setFieldError('leadEmail', 'Por favor, ingrese su correo electrónico.');
-        valid = false;
-      } else if (!isValidEmail(email)) {
-        setFieldError('leadEmail', 'El formato del correo electrónico no es válido.');
-        valid = false;
-      }
-
-      if (!valid) {
-        confirmation.hidden = true;
-        return;
-      }
-
-      // Persistir el lead con su etapa inicial: LEAD
-      const leads = readJSON(STORAGE_KEYS.LEADS, []);
-      leads.push({
-        id: `lead_${Date.now()}`,
-        name,
-        email,
-        phone,
-        stage: 'lead',
-        zohoUrl: null,
-        createdAt: new Date().toISOString(),
-      });
-      writeJSON(STORAGE_KEYS.LEADS, leads);
-
-      confirmation.hidden = false;
-      confirmation.textContent = `Gracias, ${name}. Su registro fue creado en la etapa LEAD. Un asesor se comunicará a ${email}.`;
-
-      form.reset();
-    });
-  }
-
-  /* ==================================================================== */
-  /* 3. PANEL DE PIPELINE (RAIL DE ETAPAS)                                 */
-  /* ==================================================================== */
-  function initPipelineRail() {
-    const cards = $all('.stage-card');
-    const statusEl = $('#pipelineStatus');
-
-    cards.forEach((card) => {
-      const activate = () => {
-        cards.forEach((c) => c.classList.remove('active-stage'));
-        card.classList.add('active-stage');
-
-        const stageKey = card.dataset.stage;
-        const stageLabel = STAGE_LABELS[stageKey];
-        const session = getActiveSession();
-
-        if (session) {
-          // Usuario autenticado: actualizar su etapa real
-          updateUserStage(session.email, stageKey);
-          statusEl.textContent = `Etapa actualizada a "${stageLabel}" para su cuenta.`;
-        } else {
-          statusEl.textContent = `Etapa seleccionada: "${stageLabel}". Inicie sesión para guardar este cambio en su cuenta.`;
-        }
-
-        if (ZOHO_REQUIRED_STAGES.includes(stageKey)) {
-          statusEl.textContent += ' Recuerde vincular el enlace de Zoho CRM correspondiente.';
-        }
+      const formData = new FormData(form);
+      const nuevoLead = {
+        nombre: formData.get("nombre").trim(),
+        email: formData.get("email").trim(),
+        telefono: formData.get("telefono").trim(),
+        estado: formData.get("estado"),
+        enlaceZoho: (formData.get("enlaceZoho") || "").trim(),
+        responsable: responsable,
+        fechaCreacion: serverTimestamp(),
       };
 
-      card.addEventListener('click', activate);
-      card.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          activate();
-        }
-      });
-    });
-  }
+      submitBtn.disabled = true;
+      submitBtn.querySelector("span").textContent = "Guardando…";
+      feedback.textContent = "";
+      feedback.className = "form-feedback";
 
-  /* ==================================================================== */
-  /* 4. INTEGRACIÓN CON ZOHO CRM                                           */
-  /* ==================================================================== */
-  function initZohoPanel() {
-    const zohoInput = $('#zohoUrl');
-    const saveBtn = $('#saveZohoBtn');
-    const openBtn = $('#openZohoBtn');
-    const statusEl = $('#zohoStatus');
-
-    // Precargar el enlace previamente guardado, si existe
-    const savedLink = localStorage.getItem(STORAGE_KEYS.ZOHO_LINK);
-    if (savedLink) {
-      zohoInput.value = savedLink;
-      statusEl.textContent = 'Enlace de Zoho previamente guardado cargado.';
-    }
-
-    saveBtn.addEventListener('click', () => {
-      setFieldError('zohoUrl', '');
-      const value = zohoInput.value.trim();
-
-      if (!value) {
-        setFieldError('zohoUrl', 'Ingrese un enlace antes de guardar.');
-        return;
-      }
-
-      if (!isValidUrl(value)) {
-        setFieldError('zohoUrl', 'Ingrese una URL válida (debe iniciar con http:// o https://).');
-        return;
-      }
-
-      localStorage.setItem(STORAGE_KEYS.ZOHO_LINK, value);
-
-      // Si hay un usuario con sesión activa, asociar el enlace a su cuenta
-      const session = getActiveSession();
-      if (session) {
-        updateUserZoho(session.email, value);
-        refreshSessionPanel();
-      }
-
-      statusEl.textContent = 'Enlace de Zoho guardado correctamente.';
-    });
-
-    openBtn.addEventListener('click', () => {
-      const value = zohoInput.value.trim() || localStorage.getItem(STORAGE_KEYS.ZOHO_LINK);
-
-      if (!value || !isValidUrl(value)) {
-        statusEl.textContent = 'No hay un enlace de Zoho válido guardado todavía.';
-        return;
-      }
-
-      window.open(value, '_blank', 'noopener');
-    });
-  }
-
-  /* ==================================================================== */
-  /* 5. GESTIÓN DE USUARIOS (REGISTRO / LOGIN / SESIÓN)                    */
-  /* ==================================================================== */
-  function getUsers() {
-    return readJSON(STORAGE_KEYS.USERS, []);
-  }
-
-  function saveUsers(users) {
-    writeJSON(STORAGE_KEYS.USERS, users);
-  }
-
-  function findUserByEmail(email) {
-    return getUsers().find((u) => u.email.toLowerCase() === email.toLowerCase());
-  }
-
-  function updateUserStage(email, stage) {
-    const users = getUsers();
-    const user = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
-    if (user) {
-      user.stage = stage;
-      saveUsers(users);
-    }
-  }
-
-  function updateUserZoho(email, zohoUrl) {
-    const users = getUsers();
-    const user = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
-    if (user) {
-      user.zohoUrl = zohoUrl;
-      saveUsers(users);
-    }
-  }
-
-  function setActiveSession(email, remember) {
-    const payload = JSON.stringify({ email });
-    if (remember) {
-      localStorage.setItem(STORAGE_KEYS.SESSION, payload);
-      sessionStorage.removeItem(STORAGE_KEYS.SESSION);
-    } else {
-      sessionStorage.setItem(STORAGE_KEYS.SESSION, payload);
-      localStorage.removeItem(STORAGE_KEYS.SESSION);
-    }
-  }
-
-  function getActiveSession() {
-    const fromLocal = localStorage.getItem(STORAGE_KEYS.SESSION);
-    const fromSession = sessionStorage.getItem(STORAGE_KEYS.SESSION);
-    try {
-      if (fromLocal) return JSON.parse(fromLocal);
-      if (fromSession) return JSON.parse(fromSession);
-    } catch (err) {
-      console.error('Sesión corrupta en almacenamiento:', err);
-    }
-    return null;
-  }
-
-  function clearActiveSession() {
-    localStorage.removeItem(STORAGE_KEYS.SESSION);
-    sessionStorage.removeItem(STORAGE_KEYS.SESSION);
-  }
-
-  /* ---------------------- Formulario de registro ---------------------- */
-  function initRegisterForm() {
-    const form = $('#registerForm');
-
-    form.addEventListener('submit', (event) => {
-      event.preventDefault();
-      clearErrors(form);
-      setFieldError('registerForm', '');
-
-      const name = $('#registerName').value.trim();
-      const email = $('#registerEmail').value.trim();
-      const password = $('#registerPassword').value;
-      const confirmPassword = $('#registerConfirmPassword').value;
-      const acceptTerms = $('#acceptTerms').checked;
-
-      let valid = true;
-
-      if (!name) {
-        setFieldError('registerName', 'Ingrese su nombre completo.');
-        valid = false;
-      }
-
-      if (!email) {
-        setFieldError('registerEmail', 'Ingrese su correo electrónico.');
-        valid = false;
-      } else if (!isValidEmail(email)) {
-        setFieldError('registerEmail', 'El formato del correo electrónico no es válido.');
-        valid = false;
-      } else if (findUserByEmail(email)) {
-        setFieldError('registerEmail', 'Ya existe una cuenta registrada con este correo.');
-        valid = false;
-      }
-
-      if (!password) {
-        setFieldError('registerPassword', 'Ingrese una contraseña.');
-        valid = false;
-      } else if (password.length < 8) {
-        setFieldError('registerPassword', 'La contraseña debe tener al menos 8 caracteres.');
-        valid = false;
-      }
-
-      if (!confirmPassword) {
-        setFieldError('registerConfirmPassword', 'Confirme su contraseña.');
-        valid = false;
-      } else if (password && confirmPassword !== password) {
-        setFieldError('registerConfirmPassword', 'Las contraseñas no coinciden.');
-        valid = false;
-      }
-
-      if (!acceptTerms) {
-        setFieldError('acceptTerms', 'Debe aceptar los términos y condiciones para continuar.');
-        valid = false;
-      }
-
-      if (!valid) return;
-
-      // Persistir el nuevo usuario con su etapa inicial LEAD
-      const users = getUsers();
-      users.push({
-        name,
-        email,
-        password, // Demostración de frontend únicamente — nunca almacenar contraseñas en claro en producción
-        stage: 'lead',
-        zohoUrl: localStorage.getItem(STORAGE_KEYS.ZOHO_LINK) || null,
-        createdAt: new Date().toISOString(),
-      });
-      saveUsers(users);
-
-      // Iniciar sesión automáticamente tras un registro exitoso
-      setActiveSession(email, true);
-      form.reset();
-      renderSessionOrAuth();
-    });
-  }
-
-  /* ------------------------ Formulario de login ------------------------ */
-  function initLoginForm() {
-    const form = $('#loginForm');
-
-    form.addEventListener('submit', (event) => {
-      event.preventDefault();
-      clearErrors(form);
-      setFieldError('loginForm', '');
-
-      const email = $('#loginEmail').value.trim();
-      const password = $('#loginPassword').value;
-      const remember = $('#rememberMe').checked;
-
-      let valid = true;
-
-      if (!email) {
-        setFieldError('loginEmail', 'Ingrese su correo electrónico.');
-        valid = false;
-      } else if (!isValidEmail(email)) {
-        setFieldError('loginEmail', 'El formato del correo electrónico no es válido.');
-        valid = false;
-      }
-
-      if (!password) {
-        setFieldError('loginPassword', 'Ingrese su contraseña.');
-        valid = false;
-      }
-
-      if (!valid) return;
-
-      const user = findUserByEmail(email);
-
-      if (!user || user.password !== password) {
-        setFieldError('loginForm', 'Correo electrónico o contraseña incorrectos.');
-        return;
-      }
-
-      setActiveSession(user.email, remember);
-      form.reset();
-      renderSessionOrAuth();
-    });
-  }
-
-  /* --------------------------- Cerrar sesión ---------------------------- */
-  function initLogout() {
-    $('#logoutBtn').addEventListener('click', () => {
-      clearActiveSession();
-      renderSessionOrAuth();
-    });
-  }
-
-  /* ------------------ "¿Olvidaste tu contraseña?" (demo) ---------------- */
-  function initForgotPassword() {
-    $('#forgotPasswordLink').addEventListener('click', (event) => {
-      event.preventDefault();
-      const emailField = $('#loginEmail');
-      const email = emailField.value.trim();
-
-      if (!email || !isValidEmail(email)) {
-        setFieldError('loginEmail', 'Ingrese un correo válido para recuperar su contraseña.');
-        emailField.focus();
-        return;
-      }
-
-      setFieldError('loginForm', '');
-      alert(`Si existe una cuenta asociada a ${email}, recibirá instrucciones para restablecer su contraseña.`);
-    });
-  }
-
-  /* ------------------ Selector de etapa dentro de la sesión ------------- */
-  function initSessionStageControl() {
-    $('#stageSelect').addEventListener('change', (event) => {
-      const session = getActiveSession();
-      if (!session) return;
-
-      updateUserStage(session.email, event.target.value);
-      refreshSessionPanel();
-    });
-
-    $('#sessionOpenZoho').addEventListener('click', () => {
-      const session = getActiveSession();
-      const user = session ? findUserByEmail(session.email) : null;
-      const link = (user && user.zohoUrl) || localStorage.getItem(STORAGE_KEYS.ZOHO_LINK);
-
-      if (link && isValidUrl(link)) {
-        window.open(link, '_blank', 'noopener');
+      try {
+        await addDoc(leadsCollectionRef, nuevoLead);
+        form.reset();
+        feedback.textContent = "Prospecto registrado correctamente.";
+        feedback.classList.add("success");
+        showToast(`Prospecto "${nuevoLead.nombre}" registrado para ${responsable}.`, "success");
+      } catch (error) {
+        console.error("Error al guardar el lead:", error);
+        feedback.textContent = "No se pudo guardar. Intenta nuevamente.";
+        feedback.classList.add("error");
+        showToast("Error al conectar con la base de datos.", "error");
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.querySelector("span").textContent = "Registrar prospecto";
+        setTimeout(() => {
+          feedback.textContent = "";
+          feedback.className = "form-feedback";
+        }, 4000);
       }
     });
-  }
-
-  /* ==================================================================== */
-  /* 6. RENDERIZADO DEL PANEL DE SESIÓN vs. MÓDULO DE AUTENTICACIÓN        */
-  /* ==================================================================== */
-  function refreshSessionPanel() {
-    const session = getActiveSession();
-    if (!session) return;
-
-    const user = findUserByEmail(session.email);
-    if (!user) return;
-
-    $('#sessionUserName').textContent = user.name;
-    $('#sessionUserEmail').textContent = user.email;
-    $('#sessionStage').textContent = STAGE_LABELS[user.stage] || STAGE_LABELS.lead;
-    $('#stageSelect').value = user.stage || 'lead';
-
-    const zohoUrlEl = $('#sessionZohoUrl');
-    const openZohoBtn = $('#sessionOpenZoho');
-
-    if (user.zohoUrl) {
-      zohoUrlEl.textContent = user.zohoUrl;
-      openZohoBtn.disabled = false;
-    } else {
-      zohoUrlEl.textContent = 'No se ha registrado un enlace todavía.';
-      openZohoBtn.disabled = true;
-    }
-  }
-
-  function renderSessionOrAuth() {
-    const session = getActiveSession();
-    const authCard = $('#authCard');
-    const sessionPanel = $('#sessionPanel');
-
-    if (session && findUserByEmail(session.email)) {
-      authCard.hidden = true;
-      sessionPanel.hidden = false;
-      refreshSessionPanel();
-    } else {
-      authCard.hidden = false;
-      sessionPanel.hidden = true;
-    }
-  }
-
-  /* ==================================================================== */
-  /* INICIALIZACIÓN                                                        */
-  /* ==================================================================== */
-  document.addEventListener('DOMContentLoaded', () => {
-    initAuthTabs();
-    initLeadForm();
-    initPipelineRail();
-    initZohoPanel();
-    initRegisterForm();
-    initLoginForm();
-    initLogout();
-    initForgotPassword();
-    initSessionStageControl();
-
-    renderSessionOrAuth();
   });
-})();
+}
+
+/* ---------------------------------------------------------------
+   6. SINCRONIZACIÓN EN TIEMPO REAL CON FIRESTORE
+   (onSnapshot construido sobre la colección "leads";
+   internamente reutiliza los helpers estándar de la API —
+   getDocs/updateDoc/doc — para las operaciones puntuales)
+--------------------------------------------------------------- */
+function initRealtimeSync() {
+  const leadsQuery = query(leadsCollectionRef, orderBy("fechaCreacion", "desc"));
+
+  onSnapshot(
+    leadsQuery,
+    (snapshot) => {
+      allLeads = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      }));
+      setConnectionStatus("online");
+      renderAll();
+    },
+    (error) => {
+      console.error("Error de sincronización con Firestore:", error);
+      setConnectionStatus("offline");
+      showToast("No fue posible sincronizar con Firestore.", "error");
+    }
+  );
+}
+
+// Consulta puntual de respaldo (usa getDocs) — se ejecuta una vez al cargar
+// por si el listener en tiempo real tarda en establecerse.
+async function fetchLeadsOnce() {
+  try {
+    const snapshot = await getDocs(leadsCollectionRef);
+    if (allLeads.length === 0) {
+      allLeads = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      }));
+      renderAll();
+    }
+  } catch (error) {
+    console.error("Error en consulta inicial:", error);
+  }
+}
+
+// Actualiza el estado de un lead existente (disponible para uso futuro / edición en línea)
+async function actualizarEstadoLead(leadId, nuevoEstado) {
+  try {
+    const leadRef = doc(db, "leads", leadId);
+    await updateDoc(leadRef, { estado: nuevoEstado });
+    showToast("Estado actualizado correctamente.", "success");
+  } catch (error) {
+    console.error("Error al actualizar el estado:", error);
+    showToast("No se pudo actualizar el estado.", "error");
+  }
+}
+
+/* ---------------------------------------------------------------
+   7. RENDERIZADO — TABLAS POR SECCIÓN
+--------------------------------------------------------------- */
+function renderTablaResponsable(responsable, tbodySelector) {
+  const tbody = document.querySelector(`[data-table-body="${responsable}"]`);
+  if (!tbody) return;
+
+  const leads = allLeads.filter((l) => l.responsable === responsable);
+  const emptyState = tbody.closest(".table-scroll").querySelector("[data-empty-state]");
+
+  tbody.innerHTML = "";
+
+  if (leads.length === 0) {
+    emptyState.hidden = false;
+  } else {
+    emptyState.hidden = true;
+    leads.forEach((lead) => {
+      tbody.appendChild(buildRow(lead, { showResponsable: false }));
+    });
+  }
+
+  // Actualiza contador
+  const countTarget = responsable === "María José" ? "[data-count-mj]" : "[data-count-jp]";
+  const countEl = document.querySelector(countTarget);
+  if (countEl) {
+    countEl.textContent = `${leads.length} registro${leads.length === 1 ? "" : "s"}`;
+  }
+}
+
+// Construye una fila <tr> reutilizable para cualquier tabla
+function buildRow(lead, { showResponsable }) {
+  const tr = document.createElement("tr");
+  const estadoSlug = slugify(lead.estado || "lead");
+
+  const zohoCell = lead.enlaceZoho
+    ? `<a class="zoho-link" href="${escapeHtml(lead.enlaceZoho)}" target="_blank" rel="noopener noreferrer">Ver en Zoho ↗</a>`
+    : `<span class="zoho-link disabled">Sin enlace</span>`;
+
+  const responsableCell = showResponsable
+    ? `<td><span class="owner-tag"><span class="nav-dot ${
+        lead.responsable === "María José" ? "dot-mj" : "dot-jp"
+      }"></span>${escapeHtml(lead.responsable)}</span></td>`
+    : "";
+
+  tr.innerHTML = `
+    <td class="cell-name">${escapeHtml(lead.nombre || "—")}</td>
+    <td>
+      <div class="cell-contact">
+        <span class="contact-email">${escapeHtml(lead.email || "—")}</span>
+        <span>${escapeHtml(lead.telefono || "—")}</span>
+      </div>
+    </td>
+    <td><span class="status-badge status-${estadoSlug}">${escapeHtml(lead.estado || "—")}</span></td>
+    ${responsableCell}
+    <td>${zohoCell}</td>
+    <td class="cell-date">${formatFecha(lead.fechaCreacion)}</td>
+  `;
+
+  return tr;
+}
+
+// Previene inyección HTML en campos de texto libre
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str ?? "";
+  return div.innerHTML;
+}
+
+/* ---------------------------------------------------------------
+   8. RENDERIZADO — VISTA UNIFICADA (KPIs + EMBUDO + TABLA)
+--------------------------------------------------------------- */
+function renderVistaUnificada() {
+  renderKPIs();
+  renderFunnel();
+  renderTablaUnificada();
+}
+
+function renderKPIs() {
+  const total = allLeads.length;
+  const totalMJ = allLeads.filter((l) => l.responsable === "María José").length;
+  const totalJP = allLeads.filter((l) => l.responsable === "José Pablo").length;
+  const totalInscripcion = allLeads.filter((l) => l.estado === "Proceso de Inscripción").length;
+
+  document.querySelector('[data-kpi="total"]').textContent = total;
+  document.querySelector('[data-kpi="mj"]').textContent = totalMJ;
+  document.querySelector('[data-kpi="jp"]').textContent = totalJP;
+  document.querySelector('[data-kpi="inscripcion"]').textContent = totalInscripcion;
+}
+
+// Elemento distintivo de la vista unificada: embudo con ancho proporcional
+function renderFunnel() {
+  const container = document.querySelector("[data-funnel]");
+  if (!container) return;
+
+  const total = allLeads.length || 1; // evita división entre cero
+  container.innerHTML = "";
+
+  ESTADOS.forEach((estado) => {
+    const count = allLeads.filter((l) => l.estado === estado).length;
+    const pct = Math.round((count / total) * 100);
+    const slug = slugify(estado);
+
+    const segment = document.createElement("div");
+    segment.className = "funnel-segment";
+    segment.dataset.stage = slug;
+    // El flex-grow determina el ancho proporcional (mínimo 1 para que sea visible)
+    segment.style.flexGrow = Math.max(count, total === 1 && count === 0 ? 0 : 0.6);
+    segment.style.flexBasis = "0";
+
+    segment.innerHTML = `
+      <span class="seg-pct">${pct}%</span>
+      <span class="seg-count">${count}</span>
+      <span class="seg-label">${estado}</span>
+    `;
+    container.appendChild(segment);
+  });
+}
+
+function renderTablaUnificada() {
+  const tbody = document.querySelector('[data-table-body="unificada"]');
+  const emptyState = tbody.closest(".table-scroll").querySelector("[data-empty-state]");
+  if (!tbody) return;
+
+  const filtroEstado = document.querySelector("[data-filter-estado]").value;
+  const filtroResponsable = document.querySelector("[data-filter-responsable]").value;
+
+  const filtrados = allLeads.filter((lead) => {
+    const coincideEstado = filtroEstado ? lead.estado === filtroEstado : true;
+    const coincideResponsable = filtroResponsable ? lead.responsable === filtroResponsable : true;
+    return coincideEstado && coincideResponsable;
+  });
+
+  tbody.innerHTML = "";
+
+  if (filtrados.length === 0) {
+    emptyState.hidden = false;
+  } else {
+    emptyState.hidden = true;
+    filtrados.forEach((lead) => {
+      tbody.appendChild(buildRow(lead, { showResponsable: true }));
+    });
+  }
+}
+
+function initFiltros() {
+  document.querySelector("[data-filter-estado]").addEventListener("change", renderTablaUnificada);
+  document.querySelector("[data-filter-responsable]").addEventListener("change", renderTablaUnificada);
+}
+
+/* ---------------------------------------------------------------
+   9. RENDER GENERAL (llamado cada vez que cambian los datos)
+--------------------------------------------------------------- */
+function renderAll() {
+  renderTablaResponsable("María José");
+  renderTablaResponsable("José Pablo");
+  renderVistaUnificada();
+}
+
+/* ---------------------------------------------------------------
+   10. EXPORTACIÓN A EXCEL (SheetJS / XLSX)
+--------------------------------------------------------------- */
+function initExportacion() {
+  const btn = document.getElementById("btn-export");
+  btn.addEventListener("click", () => {
+    const filtroEstado = document.querySelector("[data-filter-estado]").value;
+    const filtroResponsable = document.querySelector("[data-filter-responsable]").value;
+
+    const datosFiltrados = allLeads.filter((lead) => {
+      const coincideEstado = filtroEstado ? lead.estado === filtroEstado : true;
+      const coincideResponsable = filtroResponsable ? lead.responsable === filtroResponsable : true;
+      return coincideEstado && coincideResponsable;
+    });
+
+    if (datosFiltrados.length === 0) {
+      showToast("No hay registros para exportar con el filtro actual.", "error");
+      return;
+    }
+
+    // Estructura de filas para la hoja de cálculo
+    const filas = datosFiltrados.map((lead) => ({
+      "Nombre completo": lead.nombre || "",
+      "Correo electrónico": lead.email || "",
+      "Teléfono": lead.telefono || "",
+      "Estado del prospecto": lead.estado || "",
+      "Responsable": lead.responsable || "",
+      "Enlace Zoho CRM": lead.enlaceZoho || "",
+      "Fecha de creación": formatFecha(lead.fechaCreacion),
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(filas);
+
+    // Ajuste de ancho de columnas para mejor legibilidad
+    worksheet["!cols"] = [
+      { wch: 26 }, // Nombre
+      { wch: 28 }, // Email
+      { wch: 16 }, // Teléfono
+      { wch: 22 }, // Estado
+      { wch: 16 }, // Responsable
+      { wch: 34 }, // Zoho
+      { wch: 14 }, // Fecha
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Prospectos");
+
+    const fechaArchivo = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(workbook, `Meridian_Prospectos_${fechaArchivo}.xlsx`);
+
+    showToast(`Archivo Excel generado con ${filas.length} registro(s).`, "success");
+  });
+}
+
+/* ---------------------------------------------------------------
+   11. INICIALIZACIÓN GENERAL DE LA APLICACIÓN
+--------------------------------------------------------------- */
+function init() {
+  initNavigation();
+  initForms();
+  initFiltros();
+  initExportacion();
+  setConnectionStatus("connecting");
+  fetchLeadsOnce();
+  initRealtimeSync();
+}
+
+document.addEventListener("DOMContentLoaded", init);
+
+// Se exponen utilidades por si se requieren desde la consola / futuras vistas de edición
+window.MeridianCRM = { actualizarEstadoLead, allLeads: () => allLeads };
