@@ -1,1 +1,292 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Meridian Capital | Plataforma de Prospección y CRM</title>
 
+  <!-- Google Fonts: Inter para texto general, Roboto Mono para datos/etiquetas del pipeline -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Roboto+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- ============================= -->
+  <!-- HEADER / NAVEGACIÓN            -->
+  <!-- ============================= -->
+  <header class="site-header">
+    <div class="container header-inner">
+      <a href="#inicio" class="brand">
+        <span class="brand-mark">MC</span>
+        <span class="brand-name">Meridian&nbsp;Capital</span>
+      </a>
+
+      <nav class="main-nav" aria-label="Navegación principal">
+        <a href="#beneficios">Beneficios</a>
+        <a href="#pipeline">Seguimiento</a>
+        <a href="#acceso">Acceso</a>
+      </nav>
+
+      <a href="#acceso" class="btn btn-primary btn-nav-cta">Acceder</a>
+    </div>
+  </header>
+
+  <main>
+    <!-- ============================= -->
+    <!-- HERO / FUNNEL DE CAPTURA        -->
+    <!-- ============================= -->
+    <section class="hero" id="inicio">
+      <div class="container hero-inner">
+        <div class="hero-copy">
+          <p class="eyebrow">Asesoría patrimonial institucional</p>
+          <h1>Convierta cada prospecto en una relación de largo plazo</h1>
+          <p class="hero-subtitle">
+            Un sistema formal de captación y seguimiento diseñado para equipos comerciales
+            que exigen trazabilidad, disciplina de proceso y visibilidad total del embudo
+            de ventas, desde el primer contacto hasta la inscripción final.
+          </p>
+
+          <ul class="benefit-list">
+            <li><span class="check">✓</span> Registro y calificación estructurada de cada prospecto</li>
+            <li><span class="check">✓</span> Seguimiento por etapas alineado a su proceso comercial</li>
+            <li><span class="check">✓</span> Integración directa con su cuenta de Zoho CRM</li>
+            <li><span class="check">✓</span> Panel de control accesible mediante inicio de sesión seguro</li>
+          </ul>
+        </div>
+
+        <div class="hero-form-card">
+          <h2>Solicite información</h2>
+          <p class="form-card-subtitle">Complete el formulario y un asesor se pondrá en contacto con usted.</p>
+
+          <form id="leadForm" novalidate>
+            <div class="field">
+              <label for="leadName">Nombre completo</label>
+              <input type="text" id="leadName" name="leadName" placeholder="Ej. María Fernández" autocomplete="name" required />
+              <span class="field-error" data-error-for="leadName"></span>
+            </div>
+
+            <div class="field">
+              <label for="leadEmail">Correo electrónico</label>
+              <input type="email" id="leadEmail" name="leadEmail" placeholder="nombre@empresa.com" autocomplete="email" required />
+              <span class="field-error" data-error-for="leadEmail"></span>
+            </div>
+
+            <div class="field">
+              <label for="leadPhone">Teléfono</label>
+              <input type="tel" id="leadPhone" name="leadPhone" placeholder="+502 0000 0000" autocomplete="tel" />
+              <span class="field-error" data-error-for="leadPhone"></span>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-full">Registrarme como prospecto</button>
+            <p class="form-note">Al enviar, su registro ingresará automáticamente a la etapa <strong>LEAD</strong> del pipeline.</p>
+          </form>
+
+          <p class="lead-confirmation" id="leadConfirmation" hidden></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================= -->
+    <!-- PANEL DE FLUJO / PIPELINE       -->
+    <!-- ============================= -->
+    <section class="pipeline-section" id="pipeline">
+      <div class="container">
+        <p class="eyebrow">Flujo de seguimiento comercial</p>
+        <h2>Estado del proceso, etapa por etapa</h2>
+        <p class="section-subtitle">
+          Cada prospecto avanza por un flujo ordenado. Seleccione una etapa para revisar su definición
+          y, en las etapas de contacto avanzado, vincule el registro con su enlace de Zoho CRM.
+        </p>
+
+        <!-- Rail de etapas: elemento distintivo de la página -->
+        <div class="pipeline-rail" id="pipelineRail" role="list">
+
+          <div class="stage-card" data-stage="lead" role="listitem" tabindex="0">
+            <span class="stage-index">01</span>
+            <h3>LEAD</h3>
+            <p>Captura inicial del formulario de contacto.</p>
+          </div>
+
+          <div class="stage-card" data-stage="contactados" role="listitem" tabindex="0">
+            <span class="stage-index">02</span>
+            <h3>Contactados</h3>
+            <p>El asesor estableció el primer contacto.</p>
+          </div>
+
+          <div class="stage-card" data-stage="no-contactados" role="listitem" tabindex="0">
+            <span class="stage-index">03</span>
+            <h3>No contactados</h3>
+            <p>Sin respuesta tras los intentos de contacto.</p>
+          </div>
+
+          <div class="stage-card" data-stage="reunion" role="listitem" tabindex="0">
+            <span class="stage-index">04</span>
+            <h3>Reunión</h3>
+            <p>Agendada o realizada con el equipo comercial.</p>
+            <span class="zoho-flag">Requiere enlace Zoho</span>
+          </div>
+
+          <div class="stage-card" data-stage="prospecto" role="listitem" tabindex="0">
+            <span class="stage-index">05</span>
+            <h3>Prospecto</h3>
+            <p>Calificado tras la reunión inicial.</p>
+          </div>
+
+          <div class="stage-card" data-stage="inscripcion" role="listitem" tabindex="0">
+            <span class="stage-index">06</span>
+            <h3>Proceso de inscripción</h3>
+            <p>Etapa final del embudo comercial.</p>
+            <span class="zoho-flag">Requiere enlace Zoho</span>
+          </div>
+
+        </div>
+
+        <p class="pipeline-status" id="pipelineStatus"></p>
+
+        <!-- Integración Zoho -->
+        <div class="zoho-panel">
+          <div class="zoho-panel-text">
+            <h3>Integración con Zoho CRM</h3>
+            <p>
+              Ingrese el enlace de seguimiento correspondiente a este prospecto en Zoho. Se asociará
+              a las etapas de <strong>Reunión</strong> y <strong>Proceso de inscripción</strong>.
+            </p>
+          </div>
+          <div class="zoho-panel-controls">
+            <div class="field">
+              <label for="zohoUrl">Enlace de Zoho CRM</label>
+              <input type="url" id="zohoUrl" name="zohoUrl" placeholder="https://crm.zoho.com/crm/registro/..." />
+              <span class="field-error" data-error-for="zohoUrl"></span>
+            </div>
+            <div class="zoho-actions">
+              <button type="button" id="saveZohoBtn" class="btn btn-zoho">Guardar enlace</button>
+              <button type="button" id="openZohoBtn" class="btn btn-outline">Abrir en Zoho</button>
+            </div>
+            <p class="zoho-status" id="zohoStatus"></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================= -->
+    <!-- MÓDULO DE AUTENTICACIÓN         -->
+    <!-- ============================= -->
+    <section class="auth-section" id="acceso">
+      <div class="container auth-inner">
+
+        <!-- Panel de sesión iniciada (oculto por defecto) -->
+        <div class="session-panel" id="sessionPanel" hidden>
+          <h2>Bienvenido(a), <span id="sessionUserName">—</span></h2>
+          <p class="session-email" id="sessionUserEmail">—</p>
+
+          <div class="session-status-card">
+            <p class="session-label">Etapa actual del proceso</p>
+            <p class="session-stage" id="sessionStage">LEAD</p>
+
+            <label for="stageSelect">Actualizar etapa</label>
+            <select id="stageSelect">
+              <option value="lead">LEAD</option>
+              <option value="contactados">Contactados</option>
+              <option value="no-contactados">No contactados</option>
+              <option value="reunion">Reunión</option>
+              <option value="prospecto">Prospecto</option>
+              <option value="inscripcion">Proceso de inscripción</option>
+            </select>
+          </div>
+
+          <div class="session-zoho">
+            <p class="session-label">Enlace de Zoho asociado</p>
+            <p class="session-zoho-url" id="sessionZohoUrl">No se ha registrado un enlace todavía.</p>
+            <button type="button" id="sessionOpenZoho" class="btn btn-zoho" disabled>Abrir enlace de Zoho</button>
+          </div>
+
+          <button type="button" id="logoutBtn" class="btn btn-outline btn-full">Cerrar sesión</button>
+        </div>
+
+        <!-- Tarjeta de autenticación (login / registro) -->
+        <div class="auth-card" id="authCard">
+          <div class="auth-tabs" role="tablist">
+            <button class="auth-tab active" data-tab="login" role="tab" aria-selected="true">Iniciar sesión</button>
+            <button class="auth-tab" data-tab="register" role="tab" aria-selected="false">Crear cuenta</button>
+          </div>
+
+          <!-- FORMULARIO: LOGIN -->
+          <form id="loginForm" class="auth-form active" novalidate>
+            <div class="field">
+              <label for="loginEmail">Correo electrónico</label>
+              <input type="email" id="loginEmail" name="loginEmail" autocomplete="email" required />
+              <span class="field-error" data-error-for="loginEmail"></span>
+            </div>
+
+            <div class="field">
+              <label for="loginPassword">Contraseña</label>
+              <input type="password" id="loginPassword" name="loginPassword" autocomplete="current-password" required />
+              <span class="field-error" data-error-for="loginPassword"></span>
+            </div>
+
+            <div class="auth-row">
+              <label class="checkbox-label">
+                <input type="checkbox" id="rememberMe" name="rememberMe" />
+                Recordarme
+              </label>
+              <a href="#" class="link-muted" id="forgotPasswordLink">¿Olvidaste tu contraseña?</a>
+            </div>
+
+            <span class="field-error" data-error-for="loginForm"></span>
+            <button type="submit" class="btn btn-primary btn-full">Iniciar sesión</button>
+          </form>
+
+          <!-- FORMULARIO: REGISTRO -->
+          <form id="registerForm" class="auth-form" novalidate>
+            <div class="field">
+              <label for="registerName">Nombre completo</label>
+              <input type="text" id="registerName" name="registerName" autocomplete="name" required />
+              <span class="field-error" data-error-for="registerName"></span>
+            </div>
+
+            <div class="field">
+              <label for="registerEmail">Correo electrónico</label>
+              <input type="email" id="registerEmail" name="registerEmail" autocomplete="email" required />
+              <span class="field-error" data-error-for="registerEmail"></span>
+            </div>
+
+            <div class="field">
+              <label for="registerPassword">Contraseña</label>
+              <input type="password" id="registerPassword" name="registerPassword" autocomplete="new-password" required />
+              <span class="field-error" data-error-for="registerPassword"></span>
+            </div>
+
+            <div class="field">
+              <label for="registerConfirmPassword">Confirmar contraseña</label>
+              <input type="password" id="registerConfirmPassword" name="registerConfirmPassword" autocomplete="new-password" required />
+              <span class="field-error" data-error-for="registerConfirmPassword"></span>
+            </div>
+
+            <label class="checkbox-label">
+              <input type="checkbox" id="acceptTerms" name="acceptTerms" required />
+              Acepto los términos y condiciones y la política de privacidad
+            </label>
+            <span class="field-error" data-error-for="acceptTerms"></span>
+
+            <span class="field-error" data-error-for="registerForm"></span>
+            <button type="submit" class="btn btn-primary btn-full">Crear cuenta</button>
+          </form>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <span>© 2026 Meridian Capital. Todos los derechos reservados.</span>
+      <span>Plataforma de prospección y seguimiento comercial</span>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
